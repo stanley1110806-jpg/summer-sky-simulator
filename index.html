@@ -1,0 +1,776 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D 進階夏季星空天球模擬器 (手機版)</title>
+    <meta name="description" content="包含地球、天球經緯線與寫實星體特效的夏季星空模擬器">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&family=Noto+Sans+TC:wght@300;400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary-glow: rgba(100, 180, 255, 0.6);
+            --bg-dark: #02040a;
+            --panel-bg: rgba(10, 15, 30, 0.85);
+            --accent: #7aa2f7;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            overflow: hidden; 
+            background: var(--bg-dark); 
+            font-family: 'Outfit', 'Noto Sans TC', sans-serif; 
+            color: #e0e8ff; 
+            user-select: none;
+        }
+
+        #canvas-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+
+        #ui-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none;
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 24px;
+        }
+
+        header { text-align: center; }
+        header h1 { 
+            font-size: 1.4rem; 
+            font-weight: 700; 
+            letter-spacing: 3px;
+            background: linear-gradient(to right, #89ddff, #c0caf5, #bb9af7);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 4px;
+        }
+        header p { font-size: 0.9rem; color: #565f89; letter-spacing: 3px; }
+
+        #star-label {
+            position: fixed;
+            pointer-events: none;
+            display: none;
+            transform: translate(-50%, -150%);
+            transition: opacity 0.2s;
+        }
+        .label-content {
+            background: var(--panel-bg);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(122, 162, 247, 0.4);
+            border-radius: 12px;
+            padding: 8px 20px;
+            box-shadow: 0 0 25px rgba(0, 0, 0, 0.5), 0 0 15px var(--primary-glow);
+        }
+        .label-name { font-size: 1rem; font-weight: 600; color: #fff; text-shadow: 0 0 8px var(--primary-glow); }
+        .label-coords { font-size: 0.7rem; color: #7aa2f7; margin-top: 2px; }
+
+        #bottom-controls {
+            pointer-events: auto;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 24px;
+            width: 100%;
+        }
+
+        #sub-menu {
+            display: none;
+            background: var(--panel-bg);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            padding: 12px;
+            max-width: 90vw;
+            overflow-x: auto;
+            white-space: nowrap;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+        }
+        .star-grid { display: flex; gap: 8px; }
+        .star-item {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 8px 16px;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            font-size: 0.85rem;
+            color: #a9b1d6;
+        }
+        .star-item:hover { 
+            background: rgba(122, 162, 247, 0.2); 
+            border-color: #7aa2f7; 
+            color: #fff;
+            transform: translateY(-4px);
+        }
+        .star-item.active { background: #7aa2f7; color: #1a1b26; border-color: #fff; font-weight: 600; }
+
+        #const-menu {
+            display: flex;
+            gap: 8px;
+            padding: 6px;
+            background: rgba(0, 0, 0, 0.4);
+            border-radius: 50px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            max-width: 95vw;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+        #const-menu::-webkit-scrollbar { display: none; }
+        .const-btn {
+            background: transparent;
+            border: none;
+            color: #787c99;
+            padding: 8px 16px; white-space: nowrap; font-size: 0.9rem;
+            font-size: 1rem;
+            font-weight: 600;
+            border-radius: 40px;
+            cursor: pointer;
+            transition: all 0.4s;
+            letter-spacing: 1px;
+        }
+        .const-btn:hover { color: #fff; background: rgba(255, 255, 255, 0.05); }
+        .const-btn.active { 
+            background: linear-gradient(135deg, #7aa2f7, #bb9af7);
+            color: #fff;
+            box-shadow: 0 0 20px rgba(122, 162, 247, 0.4);
+        }
+
+        #info-panel { display: none; }
+
+        /* 星體詳細資料面板 - 手機版 Bottom Sheet */
+        #detail-panel {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            background: rgba(8, 12, 28, 0.95);
+            backdrop-filter: blur(20px);
+            border-top: 1px solid rgba(122, 162, 247, 0.3);
+            border-radius: 24px 24px 0 0;
+            padding: 24px 24px 40px;
+            pointer-events: auto;
+            transform: translateY(100%);
+            transition: transform 0.4s cubic-bezier(0.1, 0.9, 0.2, 1);
+            box-shadow: 0 -10px 40px rgba(0,0,0,0.6);
+            z-index: 20;
+            display: flex;
+            flex-direction: column;
+        }
+        #detail-panel.visible { transform: translateY(0); }
+        .dp-drag-handle {
+            width: 40px;
+            height: 4px;
+            background: rgba(255,255,255,0.3);
+            border-radius: 2px;
+            margin: -10px auto 16px;
+        }
+        .dp-close {
+            position: absolute;
+            top: 16px;
+            right: 24px;
+            font-size: 24px;
+            color: rgba(255,255,255,0.5);
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 4px;
+        }
+        .dp-close:hover { color: white; }
+        .dp-type {
+            font-size: 0.65rem;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            margin-bottom: 8px;
+            font-weight: 600;
+        }
+        .dp-name {
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: #fff;
+            margin-bottom: 4px;
+            line-height: 1.3;
+        }
+        .dp-divider {
+            height: 1px;
+            background: linear-gradient(to right, rgba(122,162,247,0.5), transparent);
+            margin: 12px 0;
+        }
+        .dp-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            margin-bottom: 8px;
+            font-size: 0.78rem;
+        }
+        .dp-label { color: #565f89; }
+        .dp-value { color: #c0caf5; font-weight: 600; }
+        .dp-desc {
+            margin-top: 14px;
+            font-size: 0.75rem;
+            color: #787c99;
+            line-height: 1.6;
+            border-top: 1px solid rgba(255,255,255,0.06);
+            padding-top: 12px;
+        }
+
+        /* 夏季大三角 badge */
+        .summer-triangle-badge {
+            display: inline-block;
+            background: linear-gradient(135deg, rgba(255,200,60,0.2), rgba(255,160,30,0.15));
+            border: 1px solid rgba(255,200,60,0.4);
+            border-radius: 20px;
+            padding: 2px 10px;
+            font-size: 0.65rem;
+            color: #ffc83c;
+            margin-top: 6px;
+            letter-spacing: 1px;
+        }
+
+        /* Scrollbar styling */
+        #sub-menu::-webkit-scrollbar { height: 4px; }
+        #sub-menu::-webkit-scrollbar-track { background: transparent; }
+        #sub-menu::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.2); border-radius: 10px; }
+    </style>
+</head>
+<body>
+    <div id="canvas-container"></div>
+    
+    <div id="star-label">
+        <div class="label-content">
+            <div class="label-name" id="l-name">織女星</div>
+            <div class="label-coords" id="l-coords">RA: 279° | Dec: 39°</div>
+        </div>
+    </div>
+
+    <!-- 右側詳細資料面板 -->
+    <div id="detail-panel">
+        <div class="dp-drag-handle" id="dp-handle"></div>
+        <button class="dp-close" id="dp-close">&times;</button>
+        <div class="dp-type" id="dp-type"></div>
+        <div class="dp-name" id="dp-name"></div>
+        <div id="dp-badge"></div>
+        <div class="dp-divider"></div>
+        <div class="dp-row"><span class="dp-label">赤經 RA</span><span class="dp-value" id="dp-ra"></span></div>
+        <div class="dp-row"><span class="dp-label">赤緯 Dec</span><span class="dp-value" id="dp-dec"></span></div>
+        <div class="dp-row" id="dp-mag-row"><span class="dp-label">視星等</span><span class="dp-value" id="dp-mag"></span></div>
+        <div class="dp-row" id="dp-dist-row"><span class="dp-label">距離</span><span class="dp-value" id="dp-dist"></span></div>
+        <div class="dp-desc" id="dp-desc"></div>
+    </div>
+
+    <div id="ui-overlay">
+        <header>
+            <h1>SUMMER CELESTIAL</h1>
+            <p>夏季天球．寫實模擬器</p>
+        </header>
+
+        <div id="bottom-controls">
+            <div id="sub-menu">
+                <div class="star-grid" id="star-btns"></div>
+            </div>
+            <div id="const-menu"></div>
+        </div>
+    </div>
+
+    <div id="info-panel">
+        中心：地球 (Earth)<br>
+        半徑：100 (Celestial Sphere)<br>
+        經緯：RA 赤經 / Dec 赤緯
+    </div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        // --- 核心資料 ---
+        const SUMMER_TRIANGLE = ['織女星 (Vega)','天津四 (Deneb)','河鼓二 (Altair)'];
+
+        const CONSTELLATIONS = [
+            { id:'lyra', name:'天琴座', nameEn:'Lyra',
+              stars:[
+                {name:'織女星 (Vega)',    ra:279, dec:39,  type:'star',    mag:0.03, color:0xd0e0ff,
+                 dist:'25 光年', desc:'全天第五亮星，A0 型藍白星，每天自轉一圈。夏夜頭頂最亮的星之一，是夏季大三角頂點。'},
+                {name:'漸台二 (Sheliak)', ra:282, dec:33,  type:'star',    mag:3.45, color:0xfff4ea,
+                 dist:'960 光年', desc:'食雙星，周期約 12.9 天，亮度會規律變化。'},
+                {name:'漸台三 (Sulafat)', ra:285, dec:33,  type:'star',    mag:3.25, color:0xffffff,
+                 dist:'620 光年', desc:'巨星，約為太陽直徑的 15 倍，光譜型 B9。'},
+                {name:'天琴座ζ',          ra:281, dec:38,  type:'star',    mag:4.3,  color:0xffffff,
+                 dist:'153 光年', desc:'雙星系統，肉眼可分辨為兩顆相鄰的星。'},
+                {name:'M57 環狀星雲',     ra:283, dec:33,  type:'nebula',  color:0xff44aa,
+                 dist:'2600 光年', desc:'行星狀星雲，垂死恆星噴出的氣體殼，中心有一顆白矮星。'},
+                {name:'M56 球狀星團',     ra:289, dec:30,  type:'cluster', color:0xffcc44,
+                 dist:'32900 光年', desc:'由數萬顆恆星組成的緊密球狀星團，年齡約 130 億年。'}
+              ],
+              lines:[[0,3],[3,1],[1,2],[2,0]]
+            },
+            { id:'cygnus', name:'天鵝座', nameEn:'Cygnus',
+              stars:[
+                {name:'天津四 (Deneb)',      ra:310, dec:45, type:'star',    mag:1.25, color:0xffffff,
+                 dist:'~2600 光年', desc:'超巨星，真實亮度可能是太陽的 20 萬倍，是已知最亮的恆星之一。夏季大三角頂點。'},
+                {name:'天津一 (Sadr)',        ra:305, dec:40, type:'star',    mag:2.2,  color:0xfff4ea,
+                 dist:'1522 光年', desc:'黃色超巨星，位於天鵝座十字中心，中文名意為「胸部」。'},
+                {name:'輦道增七 (Albireo)',   ra:290, dec:28, type:'star',    mag:3.0,  color:0xffcc44,
+                 dist:'430 光年', desc:'著名的雙星，一藍一金，色差明顯，是夏夜最美麗的雙星之一。'},
+                {name:'天津二 (δ Cyg)',       ra:296, dec:45, type:'star',    mag:2.8,  color:0xd0e0ff,
+                 dist:'165 光年', desc:'藍白色次巨星，自轉極快，赤道部分略微扁平。'},
+                {name:'北美洲星雲 (NGC 7000)',ra:315, dec:44, type:'nebula',  color:0xff3333,
+                 dist:'1600 光年', desc:'形狀酷似北美洲大陸的發射星雲，面積相當於 6 個滿月。'},
+                {name:'面紗星雲 (NGC 6992)', ra:313, dec:31, type:'nebula',  color:0x33ffff,
+                 dist:'2100 光年', desc:'超新星殘骸，約 5000 年前爆炸後形成，氣體絲縷細緻如面紗。'},
+                {name:'M29 疏散星團',        ra:305, dec:38, type:'cluster', color:0xffcc44,
+                 dist:'4000 光年', desc:'位於天鵝座高密度星場中的疏散星團。'},
+                {name:'M39 疏散星團',        ra:322, dec:48, type:'cluster', color:0xffcc44,
+                 dist:'825 光年', desc:'呈三角形分佈的疏散星團，肉眼在極佳環境下隱約可見。'}
+              ],
+              lines:[[0,1],[1,2],[1,3]]
+            },
+            { id:'aquila', name:'天鷹座', nameEn:'Aquila',
+              stars:[
+                {name:'河鼓二 (Altair)',  ra:297, dec:9,  type:'star', mag:0.77, color:0xffffff,
+                 dist:'16.7 光年', desc:'距地球僅 16.7 光年，A7 型白星，自轉速度極快（9 小時一圈），赤道半徑是極半徑的 1.2 倍。夏季大三角頂點。'},
+                {name:'河鼓三 (Alshain)', ra:299, dec:6,  type:'star', mag:3.7,  color:0xfff4ea,
+                 dist:'44.7 光年', desc:'黃色次巨星，正逐漸膨脹離開主序帶。'},
+                {name:'河鼓一 (Tarazed)', ra:296, dec:11, type:'star', mag:2.7,  color:0xffcc88,
+                 dist:'395 光年', desc:'橙色亮巨星，真實亮度約為太陽的 2500 倍。'},
+                {name:'NGC 6751 行星狀星雲', ra:286, dec:-6, type:'nebula', color:0x55ffaa,
+                 dist:'6500 光年', desc:'典型的行星狀星雲，由恆星末期拋出的發光氣體球殼組成。'}
+              ],
+              lines:[[2,0],[0,1]]
+            },
+            { id:'scorpius', name:'天蠍座', nameEn:'Scorpius',
+              stars:[
+                {name:'心宿二 (Antares)',   ra:247, dec:-26, type:'star',    mag:1.0,  color:0xff4422,
+                 dist:'550 光年', desc:'紅色超巨星，直徑約為太陽的 700 倍，若置於太陽位置可吞噬火星軌道。未來將以超新星爆發終結。'},
+                {name:'房宿三 (Dschubba)',  ra:240, dec:-23, type:'star',    mag:2.3,  color:0xd0e0ff,
+                 dist:'402 光年', desc:'藍色巨星，快速自轉形成赤道氣體盤，屬於 Be 型星。'},
+                {name:'尾宿八 (Shaula)',    ra:263, dec:-37, type:'star',    mag:1.6,  color:0xd0e0ff,
+                 dist:'700 光年', desc:'藍白色次巨星，全天第 25 亮星，位於天蠍「螫尾」。'},
+                {name:'M6 蝴蝶星團',        ra:265, dec:-32, type:'cluster', color:0xffcc44,
+                 dist:'1600 光年', desc:'疏散星團，形如蝴蝶展翅，含約 80 顆恆星，肉眼可見。'},
+                {name:'M7 托勒密星團',      ra:269, dec:-35, type:'cluster', color:0xffcc44,
+                 dist:'980 光年', desc:'全天最亮的疏散星團之一，托勒密於西元 130 年記錄之，含約 80 顆恆星。'}
+              ],
+              lines:[[1,0],[0,2]]
+            }
+        ];
+
+        // --- 初始化場景 ---
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 2000);
+        camera.position.set(0, 2, 5);  // 從地球內部向外看
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.rotateSpeed = 0.5;
+        controls.minDistance = 0;   // 允許進入天球內側
+        controls.maxDistance = 500;
+
+        // --- 寫實貼圖生成 (Procedural) ---
+        function createStarTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 128; canvas.height = 128;
+            const ctx = canvas.getContext('2d');
+            const grd = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+            grd.addColorStop(0, 'rgba(255,255,255,1)');
+            grd.addColorStop(0.1, 'rgba(255,255,255,0.8)');
+            grd.addColorStop(0.2, 'rgba(255,255,255,0.2)');
+            grd.addColorStop(1, 'rgba(0,0,0,0)');
+            ctx.fillStyle = grd;
+            ctx.fillRect(0, 0, 128, 128);
+            // 十字光芒
+            ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+            ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(64, 10); ctx.lineTo(64, 118); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(10, 64); ctx.lineTo(118, 64); ctx.stroke();
+            return new THREE.CanvasTexture(canvas);
+        }
+
+        function createNebulaTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 256; canvas.height = 256;
+            const ctx = canvas.getContext('2d');
+            for(let i=0; i<30; i++) {
+                const x = 128 + (Math.random()-0.5)*100;
+                const y = 128 + (Math.random()-0.5)*100;
+                const r = 20 + Math.random()*60;
+                const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+                g.addColorStop(0, 'rgba(255,255,255,0.05)');
+                g.addColorStop(1, 'rgba(0,0,0,0)');
+                ctx.fillStyle = g;
+                ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fill();
+            }
+            return new THREE.CanvasTexture(canvas);
+        }
+
+        const starTex = createStarTexture();
+        const nebulaTex = createNebulaTexture();
+
+        // --- 座標轉換 ---
+        function calculatePosition(ra, dec, radius) {
+            const phi = (90 - dec) * (Math.PI / 180);
+            const theta = (ra + 180) * (Math.PI / 180);
+            return new THREE.Vector3(
+                radius * Math.sin(phi) * Math.cos(theta),
+                radius * Math.cos(phi),
+                radius * Math.sin(phi) * Math.sin(theta)
+            );
+        }
+
+        // --- 建立天球與經緯線 ---
+        const sphereRadius = 150;
+        
+        // 經緯線網格 (Grid)
+        const gridGroup = new THREE.Group();
+        // 緯線 (Declination)
+        for(let d = -80; d <= 80; d += 20) {
+            const radius = sphereRadius * Math.cos(d * Math.PI / 180);
+            const y = sphereRadius * Math.sin(d * Math.PI / 180);
+            const points = [];
+            for(let i=0; i<=64; i++) {
+                const ang = (i/64) * Math.PI * 2;
+                points.push(new THREE.Vector3(radius * Math.cos(ang), y, radius * Math.sin(ang)));
+            }
+            const geo = new THREE.BufferGeometry().setFromPoints(points);
+            const mat = new THREE.LineBasicMaterial({ color: 0x4488bb, transparent: true, opacity: 0.55 });
+            gridGroup.add(new THREE.Line(geo, mat));
+        }
+        // 經線 (Right Ascension)
+        for(let r = 0; r < 360; r += 30) {
+            const points = [];
+            for(let i=0; i<=64; i++) {
+                const ang = (i/64) * Math.PI * 2;
+                points.push(new THREE.Vector3(sphereRadius * Math.cos(r*Math.PI/180) * Math.cos(ang), sphereRadius * Math.sin(ang), sphereRadius * Math.sin(r*Math.PI/180) * Math.cos(ang)));
+            }
+            const geo = new THREE.BufferGeometry().setFromPoints(points);
+            const mat = new THREE.LineBasicMaterial({ color: 0x4488bb, transparent: true, opacity: 0.55 });
+            gridGroup.add(new THREE.Line(geo, mat));
+        }
+        scene.add(gridGroup);
+
+        // --- 建立中心地球 ---
+        const earthGeo = new THREE.SphereGeometry(4, 32, 32);
+        const earthMat = new THREE.MeshPhongMaterial({ 
+            color: 0x336699, 
+            emissive: 0x1a4488,
+            emissiveIntensity: 0.8,
+            specular: 0x88ccff,
+            shininess: 30
+        });
+        const earth = new THREE.Mesh(earthGeo, earthMat);
+        scene.add(earth);
+
+        // 地球淺藍色光暈
+        const earthGlow = new THREE.PointLight(0x66bbff, 80, 60);
+        earthGlow.position.set(0, 0, 0);
+        scene.add(earthGlow);
+        
+        const light = new THREE.PointLight(0xffffff, 2000, 500);
+        light.position.set(20, 20, 20);
+        scene.add(light);
+        scene.add(new THREE.AmbientLight(0x222233, 0.5));
+
+        // --- 放置星體 ---
+        const starEntries = []; // {mesh, data, ci, si}
+        const constGroups = []; // Lines for each constellation
+
+        CONSTELLATIONS.forEach((con, ci) => {
+            const group = new THREE.Group();
+            const starMeshes = [];
+            
+            con.stars.forEach((s, si) => {
+                const pos = calculatePosition(s.ra, s.dec, sphereRadius);
+                let obj;
+                
+                if(s.type === 'star') {
+                    const size = Math.max(1.4, (5 - s.mag) * 1.1);  // 略放大
+                    const mat = new THREE.SpriteMaterial({ map: starTex, color: s.color, transparent: true, opacity: 1.0, blending: THREE.AdditiveBlending });
+                    obj = new THREE.Sprite(mat);
+                    obj.scale.set(size, size, 1);
+                } else if(s.type === 'nebula' || s.type === 'cluster') {
+                    const mat = new THREE.SpriteMaterial({ map: nebulaTex, color: s.color, transparent: true, opacity: 0.75, blending: THREE.AdditiveBlending });
+                    obj = new THREE.Sprite(mat);
+                    obj.scale.set(11, 11, 1);
+                }
+                
+                obj.position.copy(pos);
+                scene.add(obj);
+                
+                const entry = { mesh: obj, data: s, ci, si };
+                starEntries.push(entry);
+                starMeshes.push(entry);
+            });
+
+            // 連線
+            const linePoints = [];
+            con.lines.forEach(([a, b]) => {
+                linePoints.push(starMeshes[a].mesh.position.clone(), starMeshes[b].mesh.position.clone());
+            });
+            const lineGeo = new THREE.BufferGeometry().setFromPoints(linePoints);
+            const lineMat = new THREE.LineBasicMaterial({ color: 0x7aa2f7, transparent: true, opacity: 0, linewidth: 2 });
+            const lineObj = new THREE.LineSegments(lineGeo, lineMat);
+            scene.add(lineObj);
+            constGroups.push(lineObj);
+        });
+
+        // --- 夏季大三角（預設隱藏，點按鈕才顯示）---
+        const stPositions = SUMMER_TRIANGLE.map(name => {
+            const e = starEntries.find(e => e.data.name === name);
+            return e ? e.mesh.position.clone() : new THREE.Vector3();
+        });
+        const stLineGeo = new THREE.BufferGeometry().setFromPoints([
+            stPositions[0], stPositions[1],
+            stPositions[1], stPositions[2],
+            stPositions[2], stPositions[0]
+        ]);
+        const stLineMat = new THREE.LineBasicMaterial({ color: 0xffc83c, transparent: true, opacity: 0, linewidth: 2 });
+        const summerTriangleLine = new THREE.LineSegments(stLineGeo, stLineMat);
+        scene.add(summerTriangleLine);
+        let summerTriangleActive = false;
+
+        // --- 選取光圈 ---
+        const ringGeo = new THREE.RingGeometry(3, 3.2, 32);
+        const ringMat = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide, transparent: true, opacity: 0 });
+        const selectionRing = new THREE.Mesh(ringGeo, ringMat);
+        scene.add(selectionRing);
+
+        // --- UI 互動 ---
+        const label      = document.getElementById('star-label');
+        const lName      = document.getElementById('l-name');
+        const lCoords    = document.getElementById('l-coords');
+        const constMenu  = document.getElementById('const-menu');
+        const subMenu    = document.getElementById('sub-menu');
+        const starBtns   = document.getElementById('star-btns');
+        const detailPanel= document.getElementById('detail-panel');
+        document.getElementById('dp-close').onclick = () => detailPanel.classList.remove('visible');
+        
+        // Touch to close bottom sheet (simple swipe down logic)
+        let touchStartY = 0;
+        detailPanel.addEventListener('touchstart', e => touchStartY = e.touches[0].clientY, {passive: true});
+        detailPanel.addEventListener('touchend', e => {
+            if(e.changedTouches[0].clientY - touchStartY > 50) detailPanel.classList.remove('visible');
+        });
+
+        const TYPE_LABEL = { star:'⭐ 恆星', nebula:'🌌 星雲', cluster:'✨ 星團' };
+        const TYPE_COLOR = { star:'#7aa2f7', nebula:'#bb9af7', cluster:'#e0af68' };
+
+        let activeCi = -1;
+        let selectedEntry = null;
+
+        function selectStar(entry) {
+            selectedEntry = entry;
+            const s = entry.data;
+
+            // 選取光圈
+            selectionRing.position.copy(entry.mesh.position);
+            selectionRing.lookAt(0,0,0);
+            ringMat.opacity = 0.8;
+
+            // 懸浮小標籤 (手機版隱藏或移至不擋手處)
+            label.style.display = 'none'; // 手機版直接用 Bottom Sheet 就好
+            lName.textContent   = s.name;
+            lCoords.textContent = `RA: ${s.ra}° | Dec: ${s.dec}°`;
+            label.style.display = 'block';
+
+            // 右側詳細面板
+            document.getElementById('dp-type').textContent = TYPE_LABEL[s.type] || s.type;
+            document.getElementById('dp-type').style.color = TYPE_COLOR[s.type] || '#c0caf5';
+            document.getElementById('dp-name').textContent = s.name;
+
+            // 夏季大三角 badge
+            const badge = document.getElementById('dp-badge');
+            badge.innerHTML = SUMMER_TRIANGLE.includes(s.name)
+                ? '<span class="summer-triangle-badge">△ 夏季大三角</span>' : '';
+
+            document.getElementById('dp-ra').textContent   = s.ra + '°';
+            document.getElementById('dp-dec').textContent  = s.dec + '°';
+
+            const magRow  = document.getElementById('dp-mag-row');
+            const distRow = document.getElementById('dp-dist-row');
+            if(s.mag !== undefined) {
+                magRow.style.display = 'flex';
+                document.getElementById('dp-mag').textContent = s.mag;
+            } else { magRow.style.display = 'none'; }
+
+            if(s.dist) {
+                distRow.style.display = 'flex';
+                document.getElementById('dp-dist').textContent = s.dist;
+            } else { distRow.style.display = 'none'; }
+
+            document.getElementById('dp-desc').textContent = s.desc || '';
+            detailPanel.classList.add('visible');
+
+            // 旋轉中心永遠保持地球中心
+            controls.target.set(0, 0, 0);
+
+            // Highlight sub-btn
+            document.querySelectorAll('.star-item').forEach(b => b.classList.toggle('active', b.dataset.si == entry.si));
+        }
+
+        function toggleSummerTriangle() {
+            summerTriangleActive = !summerTriangleActive;
+            stLineMat.opacity = summerTriangleActive ? 0.6 : 0;
+            document.getElementById('st-btn').classList.toggle('active', summerTriangleActive);
+
+            if(summerTriangleActive) {
+                // 展開子選單：三顆頂點星
+                starBtns.innerHTML = '';
+                SUMMER_TRIANGLE.forEach(name => {
+                    const entry = starEntries.find(e => e.data.name === name);
+                    if(!entry) return;
+                    const div = document.createElement('div');
+                    div.className = 'star-item';
+                    div.textContent = name;
+                    div.onclick = () => selectStar(entry);
+                    starBtns.appendChild(div);
+                });
+                subMenu.style.display = 'block';
+                // 取消其他星座的 active
+                activeCi = -1;
+                constGroups.forEach(g => g.material.opacity = 0);
+                document.querySelectorAll('.const-btn:not(#st-btn)').forEach(b => b.classList.remove('active'));
+            } else {
+                subMenu.style.display = 'none';
+            }
+        }
+
+        function toggleConst(ci) {
+            // 關閉夏季大三角
+            summerTriangleActive = false;
+            stLineMat.opacity = 0;
+            document.getElementById('st-btn').classList.remove('active');
+
+            if(activeCi === ci) {
+                activeCi = -1;
+                subMenu.style.display = 'none';
+                label.style.display = 'none';
+                ringMat.opacity = 0;
+                detailPanel.classList.remove('visible');
+                constGroups.forEach(g => g.material.opacity = 0);
+                document.querySelectorAll('.const-btn').forEach(b => b.classList.remove('active'));
+                return;
+            }
+            activeCi = ci;
+            constGroups.forEach((g, i) => g.material.opacity = (i === ci ? 0.6 : 0));
+            document.querySelectorAll('.const-btn:not(#st-btn)').forEach((b, i) => b.classList.toggle('active', i === ci));
+            
+            // Sub menu
+            starBtns.innerHTML = '';
+            CONSTELLATIONS[ci].stars.forEach((s, si) => {
+                const div = document.createElement('div');
+                div.className = 'star-item';
+                div.dataset.si = si;
+                div.textContent = s.name;
+                div.onclick = () => selectStar(starEntries.find(e => e.ci === ci && e.si === si));
+                starBtns.appendChild(div);
+            });
+            subMenu.style.display = 'block';
+        }
+
+        // 建立底部按鈕：四個星座 + 夏季大三角
+        CONSTELLATIONS.forEach((con, ci) => {
+            const btn = document.createElement('button');
+            btn.className = 'const-btn';
+            btn.textContent = con.name;
+            btn.onclick = () => toggleConst(ci);
+            constMenu.appendChild(btn);
+        });
+        // 夏季大三角按鈕
+        const stBtn = document.createElement('button');
+        stBtn.className = 'const-btn';
+        stBtn.id = 'st-btn';
+        stBtn.textContent = '△ 夏季大三角';
+        stBtn.style.borderLeft = '1px solid rgba(255,200,60,0.3)';
+        stBtn.style.marginLeft = '4px';
+        stBtn.onclick = toggleSummerTriangle;
+        constMenu.appendChild(stBtn);
+
+        // --- 拖曳時關閉慣性，放手後恢復 ---
+        renderer.domElement.addEventListener('pointerdown', () => {
+            controls.enableDamping = false;
+        });
+        renderer.domElement.addEventListener('pointerup', () => {
+            controls.enableDamping = true;
+        });
+
+        // --- Raycasting (click) ---
+        // 使用螢幕投影距離來判斷點擊，Sprite 物件的 intersect 不穩定
+        let pointerMoved = false;
+        renderer.domElement.addEventListener('pointermove', () => { pointerMoved = true; });
+        renderer.domElement.addEventListener('pointerdown', () => { pointerMoved = false; });
+
+        window.addEventListener('click', (e) => {
+            if(pointerMoved) return;
+            // 螢幕像素座標 → NDC 標準設備座標 (-1 ~ 1)
+            const ndcX = (e.clientX / window.innerWidth) * 2 - 1;
+            const ndcY = -(e.clientY / window.innerHeight) * 2 + 1;
+
+            // 找最近的星體（螢幕空間距離）
+            let bestEntry = null;
+            let bestDist = Infinity;
+            const clickPos = new THREE.Vector2(ndcX, ndcY);
+
+            starEntries.forEach(entry => {
+                const v = entry.mesh.position.clone().project(camera);
+                if(v.z > 1) return; // 在攝影機背面
+                const screenDist = clickPos.distanceTo(new THREE.Vector2(v.x, v.y));
+                if(screenDist < bestDist) {
+                    bestDist = screenDist;
+                    bestEntry = entry;
+                }
+            });
+
+            // 閾值：NDC 空間中 0.06 約等於螢幕上 ~40px
+            if(bestEntry && bestDist < 0.06) {
+                if(bestEntry.ci !== activeCi) toggleConst(bestEntry.ci);
+                selectStar(bestEntry);
+            }
+        });
+
+        // --- 渲染迴圈 ---
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            
+            // Label mapping
+            if(selectedEntry) {
+                const v = selectedEntry.mesh.position.clone().project(camera);
+                const x = (v.x * 0.5 + 0.5) * window.innerWidth;
+                const y = (-v.y * 0.5 + 0.5) * window.innerHeight;
+                label.style.left = `${x}px`;
+                label.style.top = `${y}px`;
+                label.style.opacity = v.z > 1 ? 0 : 1;
+
+                selectionRing.scale.setScalar(1 + Math.sin(Date.now()*0.005)*0.1);
+            }
+            
+            // Earth rotation
+            earth.rotation.y += 0.002;
+            
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
